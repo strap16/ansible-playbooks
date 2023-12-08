@@ -1,12 +1,14 @@
 ---
-- name: mlag_playbook
-  hosts: MLAG_DEMO_2100
+- name: onyx_golden_mlag_L2_playbook
+  hosts: golden_onyx
   gather_facts: no
   strategy: free
   connection: network_cli
   become: yes
   become_method: enable
   vars:
+    #ansible_python_interpreter: /usr/bin/python3
+    send_mail: False
     ansible_network_os: onyx
     reset: factory
     clean_config: "True"
@@ -25,35 +27,11 @@
     version: 3.8.2204
     source_file: "{{local_path}}/sx_mlnx_os-{{ version }}/{{ cpu  }}/image-{{ cpu }}-{{ version }}.img"
     software_upgrade: "False"
+    change_hostname: "True"
     log_path: ./ansible.log
     debug: True
-    help: |
-         Parameters available:
-         reset:
-         clean_config:   default = true
-         wait_for_protocol_port: default = 22
-         force_upgrade_downgrade: default = True
-         path: default = "/tmp"
-         cpu: default = X86_64
-         user: default = root
-         password: default = password
-         ntp_server: default = 216.239.35.0
-         version: default = NA
-         software_upgrade: default = no
-         log_path: default = ./ansible_log
   tasks:
-    # - debug:
-    #    msg:  "{{ help.split('\n') }}"
-    #   tags: help
-    #   delegate_to: localhost
-    #   run_once: true
 
-    - name: print_all_vars
-      debug:
-       var: hostvars
-       verbosity: 2
-      tags: help
-      run_once: true
 
     - import_role:
         name: onyx_clean_config
@@ -68,6 +46,15 @@
     #- name: remove_known_host_entries
     #  onyx_config:
     #   commands: ssh client user admin known-host "{{remote_ip}}" remove
+
+    - import_role:
+        name: onyx_config
+      vars:
+        command:
+            - no interface mgmt0 dhcp hostname
+            - hostname {{ inventory_hostname }}
+      when: change_hostname == "True"
+      tags: change_hostname
 
     - import_role:
         name: onyx_upgrade
@@ -86,3 +73,28 @@
     - import_role:
         name: mlag
       tags: mlag
+
+    - import_role:
+       name: onyx_config
+      vars:
+       command:
+         - configuration write
+      when: change_hostname == "True"
+      tags: change_hostname
+
+
+    - import_role:
+       name: send_mail
+      vars:
+       mail_body: "Playbook used: {{ansible_play_name}} "
+       mail_server: "10.0.8.70"
+       mail_subject: "GSO Network Golden lab: do-not-reply: {{ inventory_hostname }} has been successfully provisioned"
+       mail_from: "eddies@mellanox.com"
+       mail_to_list:
+          - eddies@mellanox.com
+          - hagaia@mellanox.com
+          - marlon@mellanox.com
+          - denisyu@mellanox.com
+          - oria@mellanox.com
+      when: send_mail == "True"
+      tags: send_mail == "True"
